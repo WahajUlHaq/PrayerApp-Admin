@@ -7,6 +7,7 @@ import {
   updatePage,
   updatePageOrder,
 } from '../services/api'
+import { useSocketReload } from '../hooks/useSocketReload'
 import './PageManagement.css'
 
 const DAYS_OF_WEEK = [
@@ -20,6 +21,8 @@ const DAYS_OF_WEEK = [
 ]
 
 export default function PageManagement() {
+  const { isReloading, reloadMessage, reloadMessageType, notifyReload } = useSocketReload()
+  
   const [pages, setPages] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -100,6 +103,40 @@ export default function PageManagement() {
 
   const openEditModal = (page) => {
     setEditingPage(page)
+    
+    // Convert schedules to proper format for datetime-local inputs
+    const convertedSchedules = (page.schedules || []).map(schedule => {
+      if (schedule.type === 'daterange') {
+        // Convert ISO dates to datetime-local format (YYYY-MM-DDTHH:MM)
+        let startDate = ''
+        let endDate = ''
+        
+        try {
+          if (schedule.startDate) {
+            const start = new Date(schedule.startDate)
+            if (!isNaN(start.getTime())) {
+              startDate = start.toISOString().slice(0, 16)
+            }
+          }
+          if (schedule.endDate) {
+            const end = new Date(schedule.endDate)
+            if (!isNaN(end.getTime())) {
+              endDate = end.toISOString().slice(0, 16)
+            }
+          }
+        } catch (e) {
+          console.error('Error converting schedule dates:', e)
+        }
+        
+        return {
+          ...schedule,
+          startDate,
+          endDate
+        }
+      }
+      return schedule
+    })
+    
     setFormData({
       title: page.title || '',
       pageType: page.pageType || 'text',
@@ -108,7 +145,7 @@ export default function PageManagement() {
       image: null,
       slides: [],
       slidesMetadata: page.slides?.map(s => ({ duration: s.duration || 5, isActive: s.isActive !== undefined ? s.isActive : true })) || [],
-      schedules: page.schedules || [],
+      schedules: convertedSchedules,
       pageDuration: page.pageDuration || page.totalDuration || 5,
     })
     setExistingSlides(page.slides ? JSON.parse(JSON.stringify(page.slides)) : [])
@@ -154,9 +191,8 @@ export default function PageManagement() {
       fd.append('content', formData.content)
     }
     
-    if (formData.schedules.length > 0) {
-      fd.append('schedules', JSON.stringify(formData.schedules))
-    }
+    // Always send schedules array (even if empty) to allow deletion
+    fd.append('schedules', JSON.stringify(formData.schedules))
 
     // Handle image for single image pages
     if ((formData.pageType === 'image' || formData.pageType === 'image-text') && formData.image) {
@@ -193,10 +229,10 @@ export default function PageManagement() {
     try {
       if (editingPage) {
         await updatePage(editingPage._id, fd)
-        showMessage('Page updated successfully', 'success')
+        // await notifyReload('Page updated successfully')
       } else {
         await createPage(fd)
-        showMessage('Page created successfully', 'success')
+        // await notifyReload('Page created successfully')
       }
       setShowModal(false)
       resetForm()
@@ -211,8 +247,8 @@ export default function PageManagement() {
     
     try {
       await deletePage(pageId)
-      showMessage('Page deleted successfully', 'success')
       await loadPages()
+      // await notifyReload('Page deleted successfully')
     } catch (error) {
       showMessage(error.message || 'Failed to delete page', 'error')
     }
@@ -322,6 +358,7 @@ export default function PageManagement() {
       const pageIds = newPages.map(p => p._id)
       await updatePageOrder(pageIds)
       showMessage('Page order updated', 'success')
+      // await notifyReload('Page order changed')
     } catch (error) {
       showMessage(error.message || 'Failed to update order', 'error')
       await loadPages()
@@ -436,15 +473,39 @@ export default function PageManagement() {
             ))}
           </div>
         )}
-
-        {message && (
-          <div className={`message ${messageType}`}>
-            <span className="message-icon">{messageType === 'success' ? '✓' : '✕'}</span>
-            <span className="message-text">{message}</span>
-            <button type="button" className="message-close" onClick={() => setMessage('')}>×</button>
-          </div>
-        )}
       </div>
+
+      {/* Unified Message/Notification System */}
+      {(message || reloadMessage || isReloading) && (
+        <div className="main-container-message">
+          <div className={`message ${
+            isReloading ? 'info' : 
+            message ? messageType : 
+            reloadMessageType
+          }`}>
+            <span className="message-text">
+              {isReloading ? 'Executing operation and notifying clients...' : (message || reloadMessage)}
+            </span>
+            {!reloadMessage && !isReloading && (
+              <button
+                type="button"
+                className="message-close"
+                onClick={() => {
+                  setMessage('')
+                  setMessageType('')
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '12px',
+                  right: '12px'
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
@@ -477,8 +538,8 @@ export default function PageManagement() {
                   <option value="text">Text Only</option>
                   <option value="image">Single Image</option>
                   <option value="image-text">Image + Text</option>
-                  <option value="slider">Image Slider</option>
-                  {/* <option value="text-slider">Text + Slider</option> */}
+                  <option value="slider">Image Sliders</option>
+                  <option value="text-slider">Text + Slider</option>
                 </select>
               </div>
 
@@ -529,7 +590,20 @@ export default function PageManagement() {
                                 type="number"
                                 min="1"
                                 value={slide.duration || 5}
-                                onChange={(e) => updateExistingSlide(idx, 'duration', Number(e.target.value))}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  // Allow empty during typing
+                                  if (val === '' || val === '0') {
+                                    updateExistingSlide(idx, 'duration', '')
+                                  } else {
+                                    updateExistingSlide(idx, 'duration', Number(val))
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  if (!e.target.value || Number(e.target.value) < 1) {
+                                    updateExistingSlide(idx, 'duration', 1)
+                                  }
+                                }}
                                 className="mini-duration-input"
                                 title="Duration (seconds)"
                               />
@@ -574,7 +648,20 @@ export default function PageManagement() {
                             type="number"
                             min="1"
                             value={formData.slidesMetadata[index]?.duration || 5}
-                            onChange={(e) => updateSlideMetadata(index, 'duration', Number(e.target.value))}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              // Allow empty during typing
+                              if (val === '' || val === '0') {
+                                updateSlideMetadata(index, 'duration', '')
+                              } else {
+                                updateSlideMetadata(index, 'duration', Number(val))
+                              }
+                            }}
+                            onBlur={(e) => {
+                              if (!e.target.value || Number(e.target.value) < 1) {
+                                updateSlideMetadata(index, 'duration', 1)
+                              }
+                            }}
                             className="slide-duration"
                             placeholder="Duration (s)"
                           />
@@ -600,7 +687,20 @@ export default function PageManagement() {
                   type="number"
                   min="1"
                   value={needsSlider ? calculatedDuration : formData.pageDuration}
-                  onChange={(e) => setFormData(prev => ({ ...prev, pageDuration: Number(e.target.value) }))}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    // Allow empty during typing
+                    if (val === '' || val === '0') {
+                      setFormData(prev => ({ ...prev, pageDuration: '' }))
+                    } else {
+                      setFormData(prev => ({ ...prev, pageDuration: Number(val) }))
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!e.target.value || Number(e.target.value) < 1) {
+                      setFormData(prev => ({ ...prev, pageDuration: 1 }))
+                    }
+                  }}
                   className="form-input"
                   placeholder="Duration in seconds"
                   disabled={needsSlider}
@@ -670,14 +770,14 @@ export default function PageManagement() {
                       <div className="schedule-fields">
                         <input
                           type="datetime-local"
-                          value={schedule.startDate ? new Date(schedule.startDate).toISOString().slice(0, 16) : ''}
-                          onChange={(e) => updateSchedule(index, 'startDate', new Date(e.target.value).toISOString())}
+                          value={schedule.startDate || ''}
+                          onChange={(e) => updateSchedule(index, 'startDate', e.target.value)}
                           className="form-input"
                         />
                         <input
                           type="datetime-local"
-                          value={schedule.endDate ? new Date(schedule.endDate).toISOString().slice(0, 16) : ''}
-                          onChange={(e) => updateSchedule(index, 'endDate', new Date(e.target.value).toISOString())}
+                          value={schedule.endDate || ''}
+                          onChange={(e) => updateSchedule(index, 'endDate', e.target.value)}
                           className="form-input"
                         />
                       </div>

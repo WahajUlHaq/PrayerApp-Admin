@@ -204,6 +204,16 @@
   background: rgba(251, 113, 133, 0.14);
 }
 
+.banner-update {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.14);
+  color: rgba(134, 239, 172, 0.95);
+}
+
+.banner-update:hover {
+  background: rgba(34, 197, 94, 0.20);
+}
+
 .banner-grid {
   margin-top: 14px;
   display: grid;
@@ -302,8 +312,14 @@
 
 .banner-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.banner-actions .banner-button {
+  flex: 0 0 auto;
+  min-width: fit-content;
 }
 
 .crop-modal {

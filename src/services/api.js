@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // API configuration
 // Set `VITE_API_BASE_URL` in `.env` if needed.
-const API_BASE_URL = 'http://192.168.18.7:5000/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 // Create axios instance
 const apiClient = axios.create({

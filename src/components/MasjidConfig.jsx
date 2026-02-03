@@ -8,6 +8,7 @@ import {
   updateBannerOrder,
   uploadBanners,
 } from '../services/api'
+import { useSocketReload } from '../hooks/useSocketReload'
 import './MasjidConfig.css'
 
 const NUMERIC_FIELDS = new Set([
@@ -20,6 +21,8 @@ const NUMERIC_FIELDS = new Set([
 const TICKER_DELIM = '|||' // unique delimiter for storing multiple tickers
 
 export default function MasjidConfig() {
+  const { isReloading, reloadMessage, reloadMessageType, notifyReload } = useSocketReload()
+  
   const [formData, setFormData] = useState({
     address: '',
     method: 0,
@@ -60,6 +63,7 @@ export default function MasjidConfig() {
   const [cropping, setCropping] = useState(false)
   const [draggedIndex, setDraggedIndex] = useState(null)
   const [dragOverIndex, setDragOverIndex] = useState(null)
+  const [pendingDurations, setPendingDurations] = useState({})
 
   const cropItem = useMemo(() => {
     if (cropTarget?.type === 'selected') return selectedBanners[cropTarget.index] || null
@@ -228,8 +232,9 @@ export default function MasjidConfig() {
 
       await saveMasjidConfig(payload, { exists: configExists })
       setConfigExists(true)
-      setMessage(configExists ? 'Configuration updated successfully!' : 'Configuration saved successfully!')
-      setMessageType('success')
+      
+      // Notify clients to reload (this will show the success message)
+      await notifyReload(configExists ? 'Masjid configuration updated' : 'Masjid configuration saved')
     } catch (error) {
       const errorMsg = error.message || 'An error occurred while saving configuration'
       setMessage(errorMsg)
@@ -266,8 +271,6 @@ export default function MasjidConfig() {
       const filesToUpload = selectedBanners.map(item => item.croppedFile || item.file)
       const durations = selectedBanners.map(item => item.duration || 5)
       await uploadBanners(filesToUpload, durations)
-      setBannerMessage('Banners uploaded successfully')
-      setBannerMessageType('success')
       selectedBanners.forEach(item => {
         if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
         if (item.croppedUrl) URL.revokeObjectURL(item.croppedUrl)
@@ -275,6 +278,9 @@ export default function MasjidConfig() {
       setSelectedBanners([])
       setBannerInputKey(k => k + 1)
       await loadBanners()
+      
+      // Notify clients to reload (this will show the success message)
+      await notifyReload('Banners uploaded successfully')
     } catch (error) {
       setBannerMessage(error.message || 'Failed to upload banners')
       setBannerMessageType('error')
@@ -297,27 +303,52 @@ export default function MasjidConfig() {
   const updateSelectedBannerDuration = (index, duration) => {
     setSelectedBanners(prev => {
       const next = [...prev]
-      next[index] = { ...next[index], duration: Number(duration) }
+      next[index] = { ...next[index], duration: duration === '' ? '' : Number(duration) }
       return next
     })
   }
 
   const updateBannerDuration = async (filename, duration) => {
+    const numValue = duration === '' ? '' : Number(duration)
+    
+    // Update the banner locally first
+    const updatedBanners = banners.map(b => b.filename === filename ? { ...b, duration: numValue } : b)
+    setBanners(updatedBanners)
+    
+    // Store the pending duration change
+    setPendingDurations(prev => ({
+      ...prev,
+      [filename]: numValue
+    }))
+  }
+
+  const saveBannerDuration = async (filename) => {
     try {
-      // Update the banner locally first
-      const updatedBanners = banners.map(b => b.filename === filename ? { ...b, duration: Number(duration) } : b)
-      setBanners(updatedBanners)
+      const duration = pendingDurations[filename]
+      if (duration === undefined || duration === '' || duration < 1) {
+        setBannerMessage('Duration must be at least 1 second')
+        setBannerMessageType('error')
+        return
+      }
       
       // Send all banners with updated duration to maintain order
       const orderData = { 
-        banners: updatedBanners.map(b => ({ 
+        banners: banners.map(b => ({ 
           filename: b.filename,
           duration: b.duration || 5
         })) 
       }
       await updateBannerOrder(orderData)
-      setBannerMessage('Banner duration updated')
-      setBannerMessageType('success')
+      
+      // Clear pending duration
+      setPendingDurations(prev => {
+        const next = { ...prev }
+        delete next[filename]
+        return next
+      })
+      
+      // Notify clients to reload (this will show the success message)
+      // await notifyReload('Banner duration updated successfully')
     } catch (error) {
       setBannerMessage(error.message || 'Failed to update duration')
       setBannerMessageType('error')
@@ -430,9 +461,10 @@ export default function MasjidConfig() {
     setBannerMessageType('')
     try {
       await deleteBanner(filename)
-      setBannerMessage('Banner deleted')
-      setBannerMessageType('success')
       await loadBanners()
+      
+      // Notify clients to reload (this will show the success message)
+      // await notifyReload('Banner deleted successfully')
     } catch (error) {
       setBannerMessage(error.message || 'Failed to delete banner')
       setBannerMessageType('error')
@@ -479,8 +511,9 @@ export default function MasjidConfig() {
         })) 
       }
       await updateBannerOrder(orderData)
-      setBannerMessage('Banner order updated')
-      setBannerMessageType('success')
+      
+      // Notify clients to reload (this will show the success message)
+      // await notifyReload('Banner order updated successfully')
     } catch (error) {
       setBannerMessage(error.message || 'Failed to update banner order')
       setBannerMessageType('error')
@@ -831,8 +864,13 @@ export default function MasjidConfig() {
                     <input
                       type="number"
                       min="1"
-                      value={item.duration || 5}
+                      value={item.duration || ''}
                       onChange={(e) => updateSelectedBannerDuration(index, e.target.value)}
+                      onBlur={(e) => {
+                        if (!e.target.value || Number(e.target.value) < 1) {
+                          updateSelectedBannerDuration(index, 1)
+                        }
+                      }}
                       className="duration-input"
                       placeholder="Duration (s)"
                     />
@@ -882,7 +920,7 @@ export default function MasjidConfig() {
                     <input
                       type="number"
                       min="1"
-                      value={b.duration || 5}
+                      value={b.duration || ''}
                       onChange={(e) => updateBannerDuration(b.filename, e.target.value)}
                       className="duration-input"
                       placeholder="Duration (s)"
@@ -890,6 +928,15 @@ export default function MasjidConfig() {
                     <span className="duration-label">seconds</span>
                   </div>
                   <div className="banner-actions">
+                    {pendingDurations[b.filename] !== undefined && (
+                      <button
+                        type="button"
+                        className="banner-button banner-update"
+                        onClick={() => saveBannerDuration(b.filename)}
+                      >
+                        Update
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="banner-button"
@@ -910,24 +957,7 @@ export default function MasjidConfig() {
             </div>
           )}
 
-          {bannerMessage && (
-            <div className={`message ${bannerMessageType}`}>
-              <span className="message-icon">
-                {bannerMessageType === 'success' ? '✓' : '✕'}
-              </span>
-              <span className="message-text">{bannerMessage}</span>
-              <button
-                type="button"
-                className="message-close"
-                onClick={() => {
-                  setBannerMessage('')
-                  setBannerMessageType('')
-                }}
-              >
-                ×
-              </button>
-            </div>
-          )}
+          
         </div>
 
         {cropItem && (
@@ -983,26 +1013,46 @@ export default function MasjidConfig() {
           </div>
         )}
 
-        {/* Message Display */}
-        {message && (
-          <div className={`message ${messageType}`}>
-            <span className="message-icon">
-              {messageType === 'success' ? '✓' : '✕'}
-            </span>
-            <span className="message-text">{message}</span>
-            <button 
-              type="button"
-              className="message-close"
-              onClick={() => {
-                setMessage('')
-                setMessageType('')
-              }}
-            >
-              ×
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* Unified Message/Notification System */}
+      {(message || bannerMessage || reloadMessage || isReloading) && (
+        <div className="main-container-message">
+          <div className={`message ${
+            isReloading ? 'info' : 
+            message ? messageType : 
+            bannerMessage ? bannerMessageType : 
+            reloadMessageType
+          }`}>
+            <span className="message-text">
+              {isReloading ? 'Executing operation and notifying clients...' : (message || bannerMessage || reloadMessage)}
+            </span>
+            {!reloadMessage && !isReloading && (
+              <button
+                type="button"
+                className="message-close"
+                onClick={() => {
+                  if (message) {
+                    setMessage('')
+                    setMessageType('')
+                  }
+                  if (bannerMessage) {
+                    setBannerMessage('')
+                    setBannerMessageType('')
+                  }
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '12px',
+                  right: '12px'
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

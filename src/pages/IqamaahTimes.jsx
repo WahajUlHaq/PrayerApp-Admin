@@ -5,6 +5,7 @@ import {
   fetchIqamaahTimesMonth,
   updateIqamaahRange,
 } from '../services/api'
+import { useSocketReload } from '../hooks/useSocketReload'
 import './IqamaahTimes.css'
 
 const PRAYERS = ['fajr', 'dhuhr', 'asr', 'isha', 'jumuah']
@@ -245,6 +246,8 @@ function isValidTime(t) {
 }
 
 export default function IqamaahTimes() {
+  const { isReloading, reloadMessage, reloadMessageType, notifyReload } = useSocketReload()
+  
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1) // 1-12
@@ -254,10 +257,10 @@ export default function IqamaahTimes() {
   const [activePrayer, setActivePrayer] = useState('fajr')
 
   const [loading, setLoading] = useState(true)
-  const [message, setMessage] = useState('')
-  const [messageType, setMessageType] = useState('')
   const [monthHasData, setMonthHasData] = useState(false)
   const [actionLoading, setActionLoading] = useState('')
+  const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState('')
 
   const [newRange, setNewRange] = useState(() => ({
     startDate: isoDate(year, month, 1),
@@ -276,8 +279,6 @@ export default function IqamaahTimes() {
 
   const loadMonth = async () => {
     setLoading(true)
-    setMessage('')
-    setMessageType('')
     try {
       const res = await fetchIqamaahTimesMonth(year, month)
       setMonthHasData(res !== null)
@@ -288,8 +289,7 @@ export default function IqamaahTimes() {
       setData(clampPayload(null))
       setOriginalData(clampPayload(null))
       setMonthHasData(false)
-      setMessage(e.message || 'Failed to load iqamaah times')
-      setMessageType('error')
+      console.error('Failed to load iqamaah times:', e)
     } finally {
       setLoading(false)
     }
@@ -300,12 +300,13 @@ export default function IqamaahTimes() {
   }, [year, month])
 
   useEffect(() => {
-    if (!message) return
-    const t = setTimeout(() => {
-      setMessage('')
-      setMessageType('')
-    }, 4500)
-    return () => clearTimeout(t)
+    if (message) {
+      const timer = setTimeout(() => {
+        setMessage('')
+        setMessageType('')
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
   }, [message])
 
   const monthBounds = useMemo(() => {
@@ -350,8 +351,6 @@ export default function IqamaahTimes() {
     }
 
     setActionLoading('add')
-    setMessage('')
-    setMessageType('')
     try {
       await createIqamaahRange({
         prayer: activePrayer,
@@ -359,12 +358,10 @@ export default function IqamaahTimes() {
         endDate: newRange.endDate,
         time: newRange.time,
       })
-      setMessage('Range saved')
-      setMessageType('success')
       await loadMonth()
+      // await notifyReload('Iqamaah time range saved successfully')
     } catch (e) {
-      setMessage(e.message || 'Failed to add range')
-      setMessageType('error')
+      // await notifyReload(e.message || 'Failed to add range', 'error')
     } finally {
       setActionLoading('')
     }
@@ -388,8 +385,6 @@ export default function IqamaahTimes() {
     const original = (originalData[activePrayer] || [])[index] || range
 
     setActionLoading('update')
-    setMessage('')
-    setMessageType('')
     try {
       await updateIqamaahRange({
         prayer: activePrayer,
@@ -400,12 +395,10 @@ export default function IqamaahTimes() {
         endDate: range.endDate,
         time: range.time,
       })
-      setMessage('Range updated')
-      setMessageType('success')
       await loadMonth()
+      // await notifyReload('Iqamaah time range updated successfully')
     } catch (e) {
-      setMessage(e.message || 'Failed to update range')
-      setMessageType('error')
+      // await notifyReload(e.message || 'Failed to update range', 'error')
     } finally {
       setActionLoading('')
     }
@@ -419,8 +412,6 @@ export default function IqamaahTimes() {
     }
 
     setActionLoading('delete')
-    setMessage('')
-    setMessageType('')
     try {
       const payload = {
         prayer: activePrayer,
@@ -429,35 +420,31 @@ export default function IqamaahTimes() {
       }
       if (activePrayer === 'jumuah' && range.time) payload.time = range.time
       await deleteIqamaahRange(payload)
-      setMessage('Range deleted')
-      setMessageType('success')
       await loadMonth()
+      // await notifyReload('Iqamaah time range deleted successfully')
     } catch (e) {
-      setMessage(e.message || 'Failed to delete range')
-      setMessageType('error')
+      // await notifyReload(e.message || 'Failed to delete range', 'error')
     } finally {
       setActionLoading('')
     }
   }
 
   const prevMonth = () => {
-    setMonth(m => {
-      if (m === 1) {
-        setYear(y => y - 1)
-        return 12
-      }
-      return m - 1
-    })
+    if (month === 1) {
+      setYear(y => y - 1)
+      setMonth(12)
+    } else {
+      setMonth(m => m - 1)
+    }
   }
 
   const nextMonth = () => {
-    setMonth(m => {
-      if (m === 12) {
-        setYear(y => y + 1)
-        return 1
-      }
-      return m + 1
-    })
+    if (month === 12) {
+      setYear(y => y + 1)
+      setMonth(1)
+    } else {
+      setMonth(m => m + 1)
+    }
   }
 
   return (
@@ -598,17 +585,39 @@ export default function IqamaahTimes() {
             </section>
           </div>
         )}
-
-        {message && (
-          <div className={messageType === 'success' ? 'message success' : 'message error'}>
-            <span className="message-icon">{messageType === 'success' ? '✓' : '✕'}</span>
-            <span className="message-text">{message}</span>
-            <button type="button" className="message-close" onClick={() => { setMessage(''); setMessageType('') }}>
-              ×
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* Unified Message/Notification System */}
+      {(message || reloadMessage || isReloading) && (
+        <div className="main-container-message">
+          <div className={`message ${
+            isReloading ? 'info' : 
+            message ? messageType : 
+            reloadMessageType
+          }`}>
+            <span className="message-text">
+              {isReloading ? 'Executing operation and notifying clients...' : (message || reloadMessage)}
+            </span>
+            {!reloadMessage && !isReloading && message && (
+              <button
+                type="button"
+                className="message-close"
+                onClick={() => {
+                  setMessage('')
+                  setMessageType('')
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '12px',
+                  right: '12px'
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
