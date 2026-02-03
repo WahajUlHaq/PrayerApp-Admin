@@ -5,6 +5,7 @@ import {
   fetchBanners,
   fetchMasjidConfig,
   saveMasjidConfig,
+  updateBannerOrder,
   uploadBanners,
 } from '../services/api'
 import './MasjidConfig.css'
@@ -57,6 +58,8 @@ export default function MasjidConfig() {
   const [zoom, setZoom] = useState(1)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
   const [cropping, setCropping] = useState(false)
+  const [draggedIndex, setDraggedIndex] = useState(null)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
 
   const cropItem = useMemo(() => {
     if (cropTarget?.type === 'selected') return selectedBanners[cropTarget.index] || null
@@ -244,6 +247,7 @@ export default function MasjidConfig() {
       previewUrl: URL.createObjectURL(file),
       croppedFile: null,
       croppedUrl: null,
+      duration: 5,
     }))
     setSelectedBanners(items)
   }
@@ -260,7 +264,8 @@ export default function MasjidConfig() {
     setBannerMessageType('')
     try {
       const filesToUpload = selectedBanners.map(item => item.croppedFile || item.file)
-      await uploadBanners(filesToUpload)
+      const durations = selectedBanners.map(item => item.duration || 5)
+      await uploadBanners(filesToUpload, durations)
       setBannerMessage('Banners uploaded successfully')
       setBannerMessageType('success')
       selectedBanners.forEach(item => {
@@ -287,6 +292,38 @@ export default function MasjidConfig() {
       next.splice(index, 1)
       return next
     })
+  }
+
+  const updateSelectedBannerDuration = (index, duration) => {
+    setSelectedBanners(prev => {
+      const next = [...prev]
+      next[index] = { ...next[index], duration: Number(duration) }
+      return next
+    })
+  }
+
+  const updateBannerDuration = async (filename, duration) => {
+    try {
+      // Update the banner locally first
+      const updatedBanners = banners.map(b => b.filename === filename ? { ...b, duration: Number(duration) } : b)
+      setBanners(updatedBanners)
+      
+      // Send all banners with updated duration to maintain order
+      const orderData = { 
+        banners: updatedBanners.map(b => ({ 
+          filename: b.filename,
+          duration: b.duration || 5
+        })) 
+      }
+      await updateBannerOrder(orderData)
+      setBannerMessage('Banner duration updated')
+      setBannerMessageType('success')
+    } catch (error) {
+      setBannerMessage(error.message || 'Failed to update duration')
+      setBannerMessageType('error')
+      // Reload banners on error to restore correct state
+      await loadBanners()
+    }
   }
 
   const startCrop = (index) => {
@@ -400,6 +437,60 @@ export default function MasjidConfig() {
       setBannerMessage(error.message || 'Failed to delete banner')
       setBannerMessageType('error')
     }
+  }
+
+  const handleDragStart = (e, index) => {
+    setDraggedIndex(index)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverIndex(index)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null)
+  }
+
+  const handleDrop = async (e, dropIndex) => {
+    e.preventDefault()
+    
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+      return
+    }
+
+    const newBanners = [...banners]
+    const [draggedBanner] = newBanners.splice(draggedIndex, 1)
+    newBanners.splice(dropIndex, 0, draggedBanner)
+
+    setBanners(newBanners)
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+
+    try {
+      const orderData = { 
+        banners: newBanners.map(b => ({ 
+          filename: b.filename,
+          duration: b.duration || 5
+        })) 
+      }
+      await updateBannerOrder(orderData)
+      setBannerMessage('Banner order updated')
+      setBannerMessageType('success')
+    } catch (error) {
+      setBannerMessage(error.message || 'Failed to update banner order')
+      setBannerMessageType('error')
+      await loadBanners()
+    }
+  }
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null)
+    setDragOverIndex(null)
   }
 
   if (loading) {
@@ -520,7 +611,7 @@ export default function MasjidConfig() {
           </div>
 
           {/* Shuffle Images */}
-          <div className="form-group">
+          {/* <div className="form-group">
             <label htmlFor="shuffleImages">Shuffle Images</label>
             <select
               id="shuffleImages"
@@ -535,10 +626,10 @@ export default function MasjidConfig() {
               <option value="no">No</option>
               <option value="yes">Yes</option>
             </select>
-          </div>
+          </div> */}
 
           {/* Sequence Images */}
-          <div className="form-group">
+          {/* <div className="form-group">
             <label htmlFor="sequenceImages">Sequence Images</label>
             <select
               id="sequenceImages"
@@ -553,7 +644,7 @@ export default function MasjidConfig() {
               <option value="no">No</option>
               <option value="yes">Yes</option>
             </select>
-          </div>
+          </div> */}
 
           {/* Time Zone */}
           <div className="form-group">
@@ -736,6 +827,17 @@ export default function MasjidConfig() {
                     alt={item.file.name}
                     className="banner-image"
                   />
+                  <div className="banner-duration">
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.duration || 5}
+                      onChange={(e) => updateSelectedBannerDuration(index, e.target.value)}
+                      className="duration-input"
+                      placeholder="Duration (s)"
+                    />
+                    <span className="duration-label">seconds</span>
+                  </div>
                   <div className="banner-actions">
                     <button
                       type="button"
@@ -763,9 +865,30 @@ export default function MasjidConfig() {
             <div className="muted">No banners uploaded yet.</div>
           ) : (
             <div className="banner-grid">
-              {banners.map(b => (
-                <div key={b.filename} className="banner-item">
+              {banners.map((b, index) => (
+                <div
+                  key={b.filename}
+                  className={`banner-item ${draggedIndex === index ? 'dragging' : ''} ${dragOverIndex === index ? 'drag-over' : ''}`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onDragEnd={handleDragEnd}
+                >
+                  {/* <div className="drag-handle">⋮⋮</div> */}
                   <img src={b.url} alt={b.filename} className="banner-image" />
+                  <div className="banner-duration">
+                    <input
+                      type="number"
+                      min="1"
+                      value={b.duration || 5}
+                      onChange={(e) => updateBannerDuration(b.filename, e.target.value)}
+                      className="duration-input"
+                      placeholder="Duration (s)"
+                    />
+                    <span className="duration-label">seconds</span>
+                  </div>
                   <div className="banner-actions">
                     <button
                       type="button"

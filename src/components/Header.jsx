@@ -43,6 +43,13 @@ export default function Header() {
           >
             Iqamaah Times
           </NavLink>
+          <NavLink
+            to="/page-management"
+            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+            onClick={() => setOpen(false)}
+          >
+            Page Management
+          </NavLink>
           {/* <NavLink
             to="/coming-soon"
             className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}

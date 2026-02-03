@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // API configuration
 // Set `VITE_API_BASE_URL` in `.env` if needed.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
+const API_BASE_URL = 'http://192.168.18.7:5000/api'
 
 // Create axios instance
 const apiClient = axios.create({
@@ -156,12 +156,16 @@ export async function fetchBanners() {
   }
 }
 
-export async function uploadBanners(files) {
+export async function uploadBanners(files, durations) {
   try {
     const formData = new FormData()
     ;(files || []).forEach(file => {
       formData.append('banners', file)
     })
+    
+    if (durations && durations.length > 0) {
+      formData.append('durations', JSON.stringify(durations))
+    }
 
     const response = await apiClient.post('/banners', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -175,6 +179,86 @@ export async function uploadBanners(files) {
 export async function deleteBanner(filename) {
   try {
     const response = await apiClient.delete(`/banners/${filename}`)
+    return unwrap(response.data)
+  } catch (error) {
+    throw new Error(getErrorMessage(error))
+  }
+}
+
+export async function updateBannerOrder(orderData) {
+  try {
+    const response = await apiClient.put('/banners/order', orderData)
+    return unwrap(response.data)
+  } catch (error) {
+    throw new Error(getErrorMessage(error))
+  }
+}
+
+// ------------------------------
+// Pages Management
+// ------------------------------
+
+export async function fetchPages() {
+  try {
+    const response = await apiClient.get('/pages')
+    return unwrap(response.data)
+  } catch (error) {
+    throw new Error(getErrorMessage(error))
+  }
+}
+
+export async function fetchActivePage() {
+  try {
+    const response = await apiClient.get('/pages/active')
+    return unwrap(response.data)
+  } catch (error) {
+    throw new Error(getErrorMessage(error))
+  }
+}
+
+export async function fetchPageById(pageId) {
+  try {
+    const response = await apiClient.get(`/pages/${pageId}`)
+    return unwrap(response.data)
+  } catch (error) {
+    throw new Error(getErrorMessage(error))
+  }
+}
+
+export async function createPage(formData) {
+  try {
+    const response = await apiClient.post('/pages', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return unwrap(response.data)
+  } catch (error) {
+    throw new Error(getErrorMessage(error))
+  }
+}
+
+export async function updatePage(pageId, formData) {
+  try {
+    const response = await apiClient.put(`/pages/${pageId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return unwrap(response.data)
+  } catch (error) {
+    throw new Error(getErrorMessage(error))
+  }
+}
+
+export async function deletePage(pageId) {
+  try {
+    const response = await apiClient.delete(`/pages/${pageId}`)
+    return unwrap(response.data)
+  } catch (error) {
+    throw new Error(getErrorMessage(error))
+  }
+}
+
+export async function updatePageOrder(pageIds) {
+  try {
+    const response = await apiClient.put('/pages/order/update', { pageIds })
     return unwrap(response.data)
   } catch (error) {
     throw new Error(getErrorMessage(error))

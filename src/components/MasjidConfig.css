@@ -183,14 +183,16 @@
 }
 
 .banner-button {
-  height: 40px;
-  padding: 10px 14px;
-  border-radius: 12px;
+  height: 36px;
+  padding: 6px 10px;
+  border-radius: 8px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: rgba(148, 163, 184, 0.08);
   color: rgba(226, 232, 240, 0.92);
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .banner-button:hover {
@@ -217,12 +219,49 @@
 }
 
 .banner-item {
+  position: relative;
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 14px;
   padding: 10px;
   background: rgba(2, 6, 23, 0.25);
   display: grid;
   gap: 8px;
+  cursor: grab;
+  transition: all 0.2s ease;
+}
+
+.banner-item:active {
+  cursor: grabbing;
+}
+
+.banner-item.dragging {
+  opacity: 0.5;
+  transform: scale(0.95);
+}
+
+.banner-item.drag-over {
+  border-color: rgba(34, 197, 94, 0.6);
+  background: rgba(34, 197, 94, 0.1);
+  transform: scale(1.02);
+}
+
+.drag-handle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(2, 6, 23, 0.8);
+  color: rgba(226, 232, 240, 0.7);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: grab;
+  user-select: none;
+  z-index: 10;
+}
+
+.banner-item:active .drag-handle {
+  cursor: grabbing;
 }
 
 .banner-image {
@@ -230,6 +269,35 @@
   height: 120px;
   object-fit: cover;
   border-radius: 10px;
+}
+
+.banner-duration {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.duration-input {
+  width: 60px;
+  height: 32px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(2, 6, 23, 0.35);
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+}
+
+.duration-input:focus {
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.duration-label {
+  font-size: 11px;
+  color: rgba(226, 232, 240, 0.6);
 }
 
 .banner-actions {
