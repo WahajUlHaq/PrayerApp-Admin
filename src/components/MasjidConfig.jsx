@@ -647,14 +647,13 @@ export default function MasjidConfig() {
               />
               <span className="muted">Keep Iqamaah time visible at all times</span>
             </div>
-          </div>
 
           {/* Use Mobile TTS (Robotic Voice Over) */}
-          <div className="form-group">
-            <label htmlFor="useMobileTTS">
+          {/* <div className="form-group"> */}
+            {/* <label htmlFor="useMobileTTS">
               Robotic Voice Over
-            </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            </label> */}
+            {/* <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input
                 type="checkbox"
                 id="useMobileTTS"
@@ -664,11 +663,10 @@ export default function MasjidConfig() {
                 style={{ width: 'auto', cursor: 'pointer' }}
               />
               <span className="muted">Use mobile's built-in TTS instead of ElevenLabs</span>
-            </div>
-          </div>
+            </div> */}
+          {/* </div> */}
 
           {/* Display Timer Duration */}
-          <div className="form-group">
             <label htmlFor="displayTimerDuration">
               Display iqamah time days before {!formData.alwaysDisplayIqamaahTime && <span className="required">*</span>}
             </label>
