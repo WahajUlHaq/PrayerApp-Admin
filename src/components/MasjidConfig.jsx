@@ -42,6 +42,7 @@ export default function MasjidConfig() {
     sequenceImages: false,
     alwaysDisplayIqamaahTime: false,
     displayTimerDuration: '',
+    useMobileTTS: false,
   })
 
   const [tickers, setTickers] = useState([''])
@@ -269,7 +270,7 @@ export default function MasjidConfig() {
       setConfigExists(true)
       
       // Notify clients to reload (this will show the success message)
-      await notifyReload(configExists ? 'Masjid configuration updated' : 'Masjid configuration saved')
+      // await notifyReload(configExists ? 'Masjid configuration updated' : 'Masjid configuration saved')
     } catch (error) {
       const errorMsg = error.message || 'An error occurred while saving configuration'
       setMessage(errorMsg)
@@ -645,6 +646,24 @@ export default function MasjidConfig() {
                 style={{ width: 'auto', cursor: 'pointer' }}
               />
               <span className="muted">Keep Iqamaah time visible at all times</span>
+            </div>
+          </div>
+
+          {/* Use Mobile TTS (Robotic Voice Over) */}
+          <div className="form-group">
+            <label htmlFor="useMobileTTS">
+              Robotic Voice Over
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input
+                type="checkbox"
+                id="useMobileTTS"
+                name="useMobileTTS"
+                checked={formData.useMobileTTS}
+                onChange={handleInputChange}
+                style={{ width: 'auto', cursor: 'pointer' }}
+              />
+              <span className="muted">Use mobile's built-in TTS instead of ElevenLabs</span>
             </div>
           </div>
 
