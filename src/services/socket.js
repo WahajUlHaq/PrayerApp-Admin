@@ -93,6 +93,67 @@ class SocketService {
     })
   }
 
+  emitAnnounce(announcement, timeout = 30000) {
+    console.log('emitAnnounce method called')
+    return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        console.error('Socket is null')
+        reject(new Error('Socket not initialized'))
+        return
+      }
+      
+      if (!this.isConnected) {
+        console.error('Socket not connected. Connection state:', this.isConnected)
+        reject(new Error('Socket not connected'))
+        return
+      }
+
+      console.log('Socket is connected, proceeding with announce')
+      
+      let timeoutId
+
+      // Set timeout
+      timeoutId = setTimeout(() => {
+        console.log('Announce timeout reached')
+        resolve({
+          success: false,
+          responses: [],
+          timedOut: true,
+        })
+      }, timeout)
+
+      // Emit announce event with acknowledgment callback
+      console.log('Emitting admin:announce with:', announcement)
+      this.socket.emit('admin:announce', 
+        {
+          announcement,
+          timestamp: new Date().toISOString(),
+        },
+        (response) => {
+          // Server acknowledgment
+          console.log('Received server acknowledgment:', response)
+          clearTimeout(timeoutId)
+          
+          if (response && response.success) {
+            resolve({
+              success: true,
+              responses: [response],
+              timedOut: false,
+              message: response.message,
+            })
+          } else {
+            resolve({
+              success: false,
+              responses: [response],
+              timedOut: false,
+              error: response?.error || response?.message || 'Unknown error',
+            })
+          }
+        }
+      )
+    })
+  }
+
   getSocket() {
     return this.socket
   }

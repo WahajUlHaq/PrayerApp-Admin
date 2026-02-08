@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useSocketReload } from '../hooks/useSocketReload'
+import { fetchMasjidConfig } from '../services/api'
 import './Header.css'
+
+const ANNOUNCEMENT_DELIM = '|||' // unique delimiter for storing multiple announcements
 
 export default function Header() {
   const [open, setOpen] = useState(false)
-  const { isReloading, reloadMessage, reloadMessageType, notifyReload } = useSocketReload()
+  const { isReloading, reloadMessage, reloadMessageType, notifyReload, isAnnouncing, notifyAnnounce } = useSocketReload()
 
   return (
     <>
@@ -61,8 +64,47 @@ export default function Header() {
                 await notifyReload('Reload triggered manually')
               }}
               title="Reload connected clients"
+              disabled={isReloading || isAnnouncing}
             >
               Reload Clients
+            </button>
+            <button
+              type="button"
+              className="nav-link reload-button"
+              onClick={async () => {
+                setOpen(false)
+                try {
+                  // Fetch current config to get announcements
+                  const config = await fetchMasjidConfig()
+                  const rawAnnouncements = String(config?.announcements || '')
+                  
+                  if (!rawAnnouncements) {
+                    alert('No announcements configured. Please add announcements in Masjid Config first.')
+                    return
+                  }
+                  
+                  // Split announcements and join with bullet for display
+                  const announcementText = rawAnnouncements
+                    .split(ANNOUNCEMENT_DELIM)
+                    .map(item => String(item || '').trim())
+                    .filter(Boolean)
+                    .join(' • ')
+                  
+                  if (!announcementText) {
+                    alert('No announcements configured. Please add announcements in Masjid Config first.')
+                    return
+                  }
+                  
+                  await notifyAnnounce(announcementText)
+                } catch (error) {
+                  console.error('Error sending announcement:', error)
+                  alert('Failed to send announcement: ' + (error.message || 'Unknown error'))
+                }
+              }}
+              title="Send announcements to clients"
+              disabled={isReloading || isAnnouncing}
+            >
+              {isAnnouncing ? 'Sending...' : 'Send Announcements'}
             </button>
           </nav>
         </div>

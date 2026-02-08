@@ -25,6 +25,9 @@ export default function PageManagement() {
   
   const [pages, setPages] = useState([])
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(null) // Track which page is being deleted
+  const [reordering, setReordering] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editingPage, setEditingPage] = useState(null)
   const [viewingPage, setViewingPage] = useState(null)
@@ -181,52 +184,53 @@ export default function PageManagement() {
       }
     }
 
-    const fd = new FormData()
-    fd.append('title', formData.title)
-    fd.append('pageType', formData.pageType)
-    fd.append('isActive', formData.isActive)
-    fd.append('pageDuration', needsSlider ? calculatedDuration : formData.pageDuration)
-    
-    if (formData.content) {
-      fd.append('content', formData.content)
-    }
-    
-    // Always send schedules array (even if empty) to allow deletion
-    fd.append('schedules', JSON.stringify(formData.schedules))
-
-    // Handle image for single image pages
-    if ((formData.pageType === 'image' || formData.pageType === 'image-text') && formData.image) {
-      fd.append('image', formData.image)
-    }
-
-    // Handle slider pages
-    if (formData.pageType === 'slider' || formData.pageType === 'text-slider') {
-      // If there are new files to upload
-      if (formData.slides.length > 0) {
-        formData.slides.forEach(slide => {
-          fd.append('slides', slide)
-        })
-        fd.append('slidesMetadata', JSON.stringify(formData.slidesMetadata))
-      }
-      
-      // If editing and there are existing slides (for duration/isActive updates)
-      if (editingPage && existingSlides.length > 0) {
-        // Send existing slides as JSON array for metadata updates
-        const existingSlidesData = existingSlides.map(s => ({
-          image: s.image,
-          duration: s.duration,
-          isActive: s.isActive
-        }))
-        fd.append('existingSlides', JSON.stringify(existingSlidesData))
-      }
-      
-      // Handle removed slides
-      if (editingPage && removedSlides.length > 0) {
-        fd.append('removeSlides', JSON.stringify(removedSlides))
-      }
-    }
-
+    setSaving(true)
     try {
+      const fd = new FormData()
+      fd.append('title', formData.title)
+      fd.append('pageType', formData.pageType)
+      fd.append('isActive', formData.isActive)
+      fd.append('pageDuration', needsSlider ? calculatedDuration : formData.pageDuration)
+      
+      if (formData.content) {
+        fd.append('content', formData.content)
+      }
+      
+      // Always send schedules array (even if empty) to allow deletion
+      fd.append('schedules', JSON.stringify(formData.schedules))
+
+      // Handle image for single image pages
+      if ((formData.pageType === 'image' || formData.pageType === 'image-text') && formData.image) {
+        fd.append('image', formData.image)
+      }
+
+      // Handle slider pages
+      if (formData.pageType === 'slider' || formData.pageType === 'text-slider') {
+        // If there are new files to upload
+        if (formData.slides.length > 0) {
+          formData.slides.forEach(slide => {
+            fd.append('slides', slide)
+          })
+          fd.append('slidesMetadata', JSON.stringify(formData.slidesMetadata))
+        }
+        
+        // If editing and there are existing slides (for duration/isActive updates)
+        if (editingPage && existingSlides.length > 0) {
+          // Send existing slides as JSON array for metadata updates
+          const existingSlidesData = existingSlides.map(s => ({
+            image: s.image,
+            duration: s.duration,
+            isActive: s.isActive
+          }))
+          fd.append('existingSlides', JSON.stringify(existingSlidesData))
+        }
+        
+        // Handle removed slides
+        if (editingPage && removedSlides.length > 0) {
+          fd.append('removeSlides', JSON.stringify(removedSlides))
+        }
+      }
+
       if (editingPage) {
         await updatePage(editingPage._id, fd)
         // await notifyReload('Page updated successfully')
@@ -239,18 +243,23 @@ export default function PageManagement() {
       await loadPages()
     } catch (error) {
       showMessage(error.message || 'Operation failed', 'error')
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleDelete = async (pageId) => {
     if (!confirm('Are you sure you want to delete this page?')) return
     
+    setDeleting(pageId)
     try {
       await deletePage(pageId)
       await loadPages()
       // await notifyReload('Page deleted successfully')
     } catch (error) {
       showMessage(error.message || 'Failed to delete page', 'error')
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -353,6 +362,7 @@ export default function PageManagement() {
     setPages(newPages)
     setDraggedIndex(null)
     setDragOverIndex(null)
+    setReordering(true)
 
     try {
       const pageIds = newPages.map(p => p._id)
@@ -362,6 +372,8 @@ export default function PageManagement() {
     } catch (error) {
       showMessage(error.message || 'Failed to update order', 'error')
       await loadPages()
+    } finally {
+      setReordering(false)
     }
   }
 
@@ -420,7 +432,13 @@ export default function PageManagement() {
         {pages.length === 0 ? (
           <div className="empty-state">No pages created yet</div>
         ) : (
-          <div className="pages-list">
+          <>
+            {reordering && (
+              <div className="muted" style={{ marginBottom: '10px', color: '#0066cc' }}>
+                Updating page order...
+              </div>
+            )}
+            <div className="pages-list">
             {pages.map((page, index) => (
               <div
                 key={page._id}
@@ -458,21 +476,34 @@ export default function PageManagement() {
                   </div>
 
                   <div className="page-card-actions">
-                    <button className="action-button" onClick={() => openViewModal(page)}>
+                    <button 
+                      className="action-button" 
+                      onClick={() => openViewModal(page)}
+                      disabled={deleting || reordering}
+                    >
                       View
                     </button>
-                    <button className="action-button" onClick={() => openEditModal(page)}>
+                    <button 
+                      className="action-button" 
+                      onClick={() => openEditModal(page)}
+                      disabled={deleting || reordering}
+                    >
                       Edit
                     </button>
-                    <button className="action-button delete-button" onClick={() => handleDelete(page._id)}>
-                      Delete
+                    <button 
+                      className="action-button delete-button" 
+                      onClick={() => handleDelete(page._id)}
+                      disabled={deleting || reordering}
+                    >
+                      {deleting === page._id ? 'Deleting...' : 'Delete'}
                     </button>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+              ))}            </div>
+            </>
+          )
+        }
       </div>
 
       {/* Unified Message/Notification System */}
@@ -787,11 +818,20 @@ export default function PageManagement() {
               </div>
 
               <div className="modal-actions">
-                <button type="button" className="cancel-button" onClick={() => setShowModal(false)}>
+                <button 
+                  type="button" 
+                  className="cancel-button" 
+                  onClick={() => setShowModal(false)}
+                  disabled={saving}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="submit-button">
-                  {editingPage ? 'Update' : 'Create'}
+                <button 
+                  type="submit" 
+                  className="submit-button"
+                  disabled={saving}
+                >
+                  {saving ? (editingPage ? 'Updating...' : 'Creating...') : (editingPage ? 'Update' : 'Create')}
                 </button>
               </div>
             </form>

@@ -19,6 +19,7 @@ const NUMERIC_FIELDS = new Set([
 ])
 
 const TICKER_DELIM = '|||' // unique delimiter for storing multiple tickers
+const ANNOUNCEMENT_DELIM = '|||' // unique delimiter for storing multiple announcements
 
 export default function MasjidConfig() {
   const { isReloading, reloadMessage, reloadMessageType, notifyReload } = useSocketReload()
@@ -35,12 +36,16 @@ export default function MasjidConfig() {
     qrLink: '',
     timeZone: '',
     tickerText: '',
+    announcements: '',
     maghribSunsetAdditionMinutes: '',
     shuffleImages: false,
     sequenceImages: false,
+    alwaysDisplayIqamaahTime: false,
+    displayTimerDuration: '',
   })
 
   const [tickers, setTickers] = useState([''])
+  const [announcements, setAnnouncements] = useState([''])
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -51,6 +56,9 @@ export default function MasjidConfig() {
   const [banners, setBanners] = useState([])
   const [bannerLoading, setBannerLoading] = useState(true)
   const [bannerUploading, setBannerUploading] = useState(false)
+  const [bannerDeleting, setBannerDeleting] = useState(null) // Tracks filename being deleted
+  const [bannerUpdating, setBannerUpdating] = useState(null) // Tracks filename being updated
+  const [bannerReordering, setBannerReordering] = useState(false)
   const [bannerMessage, setBannerMessage] = useState('')
   const [bannerMessageType, setBannerMessageType] = useState('')
   const [bannerInputKey, setBannerInputKey] = useState(0)
@@ -127,6 +135,15 @@ export default function MasjidConfig() {
               ? [rawTicker]
               : ['']
           setTickers(parts.length ? parts : [''])
+          
+          const rawAnnouncements = String(config.announcements || '')
+          const announcementParts = rawAnnouncements.includes(ANNOUNCEMENT_DELIM)
+            ? rawAnnouncements.split(ANNOUNCEMENT_DELIM)
+            : rawAnnouncements
+              ? [rawAnnouncements]
+              : ['']
+          setAnnouncements(announcementParts.length ? announcementParts : [''])
+          
           setConfigExists(true)
           return
         }
@@ -182,10 +199,10 @@ export default function MasjidConfig() {
   }, [bannerMessage])
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target
+    const { name, value, type, checked } = e.target
     setFormData(prev => ({
       ...prev,
-      [name]: NUMERIC_FIELDS.has(name) ? Number.parseInt(value, 10) : value
+      [name]: type === 'checkbox' ? checked : (NUMERIC_FIELDS.has(name) ? Number.parseInt(value, 10) : value)
     }))
   }
 
@@ -210,6 +227,18 @@ export default function MasjidConfig() {
       return
     }
 
+    // Validate displayTimerDuration based on alwaysDisplayIqamaahTime
+    if (formData.alwaysDisplayIqamaahTime) {
+      // displayTimerDuration is optional when alwaysDisplayIqamaahTime is true
+    } else {
+      // displayTimerDuration is required when alwaysDisplayIqamaahTime is false
+      if (!formData.displayTimerDuration || formData.displayTimerDuration <= 0) {
+        setMessage('Display Timer Duration is required when "Always Display Iqamaah Time" is disabled!')
+        setMessageType('error')
+        return
+      }
+    }
+
     setSaving(true)
     setMessage('')
     setMessageType('')
@@ -221,6 +250,11 @@ export default function MasjidConfig() {
           .filter(Boolean)
           .join(TICKER_DELIM)
 
+        const announcementsText = announcements
+          .map(item => String(item || '').trim())
+          .filter(Boolean)
+          .join(ANNOUNCEMENT_DELIM)
+
         const payload = {
         ...formData,
         tune: typeof formData.tune === 'string' ? formData.tune.replace(/\s+/g, '') : formData.tune,
@@ -228,6 +262,7 @@ export default function MasjidConfig() {
         qrLink: formData.qrLink.trim(),
         timeZone: formData.timeZone.trim(),
           tickerText,
+          announcements: announcementsText,
       }
 
       await saveMasjidConfig(payload, { exists: configExists })
@@ -331,6 +366,7 @@ export default function MasjidConfig() {
         return
       }
       
+      setBannerUpdating(filename)
       // Send all banners with updated duration to maintain order
       const orderData = { 
         banners: banners.map(b => ({ 
@@ -354,6 +390,8 @@ export default function MasjidConfig() {
       setBannerMessageType('error')
       // Reload banners on error to restore correct state
       await loadBanners()
+    } finally {
+      setBannerUpdating(null)
     }
   }
 
@@ -457,6 +495,7 @@ export default function MasjidConfig() {
   const handleDeleteBanner = async (filename) => {
     if (!filename) return
 
+    setBannerDeleting(filename)
     setBannerMessage('')
     setBannerMessageType('')
     try {
@@ -468,6 +507,8 @@ export default function MasjidConfig() {
     } catch (error) {
       setBannerMessage(error.message || 'Failed to delete banner')
       setBannerMessageType('error')
+    } finally {
+      setBannerDeleting(null)
     }
   }
 
@@ -502,6 +543,7 @@ export default function MasjidConfig() {
     setBanners(newBanners)
     setDraggedIndex(null)
     setDragOverIndex(null)
+    setBannerReordering(true)
 
     try {
       const orderData = { 
@@ -518,6 +560,8 @@ export default function MasjidConfig() {
       setBannerMessage(error.message || 'Failed to update banner order')
       setBannerMessageType('error')
       await loadBanners()
+    } finally {
+      setBannerReordering(false)
     }
   }
 
@@ -586,6 +630,48 @@ export default function MasjidConfig() {
             />
           </div>
 
+          {/* Always Display Iqamaah Time */}
+          <div className="form-group">
+            <label htmlFor="alwaysDisplayIqamaahTime">
+              Always Display Iqamaah Time <span className="required">*</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input
+                type="checkbox"
+                id="alwaysDisplayIqamaahTime"
+                name="alwaysDisplayIqamaahTime"
+                checked={formData.alwaysDisplayIqamaahTime}
+                onChange={handleInputChange}
+                style={{ width: 'auto', cursor: 'pointer' }}
+              />
+              <span className="muted">Keep Iqamaah time visible at all times</span>
+            </div>
+          </div>
+
+          {/* Display Timer Duration */}
+          <div className="form-group">
+            <label htmlFor="displayTimerDuration">
+              Display iqamah time days before {!formData.alwaysDisplayIqamaahTime && <span className="required">*</span>}
+            </label>
+            <input
+              type="number"
+              id="displayTimerDuration"
+              name="displayTimerDuration"
+              value={formData.displayTimerDuration}
+              onChange={handleInputChange}
+              placeholder="e.g., 30"
+              required={!formData.alwaysDisplayIqamaahTime}
+              className="form-input"
+              min="1"
+              disabled={formData.alwaysDisplayIqamaahTime}
+            />
+            <span className="muted">
+              {formData.alwaysDisplayIqamaahTime 
+                ? 'Not required when \"Always Display Iqamaah Time\" is enabled' 
+                : 'Duration to display timer before hiding (required)'}
+            </span>
+          </div>
+
           {/* Ticker Text */}
           <div className="form-group">
             <label>Ticker Text</label>
@@ -624,6 +710,48 @@ export default function MasjidConfig() {
                 onClick={() => setTickers(prev => [...prev, ''])}
               >
                 Add ticker
+              </button>
+            </div>
+          </div>
+
+          {/* Announcements */}
+          <div className="form-group">
+            <label>Announcements</label>
+            <div className="ticker-list">
+              {announcements.map((value, index) => (
+                <div key={`announcement-${index}`} className="ticker-row">
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(e) => {
+                      const next = [...announcements]
+                      next[index] = e.target.value
+                      setAnnouncements(next)
+                    }}
+                    placeholder="Enter announcement"
+                    className="form-input"
+                  />
+                  <button
+                    type="button"
+                    className="inline-button"
+                    onClick={() => {
+                      if (announcements.length === 1) {
+                        setAnnouncements([''])
+                        return
+                      }
+                      setAnnouncements(prev => prev.filter((_, i) => i !== index))
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="inline-button"
+                onClick={() => setAnnouncements(prev => [...prev, ''])}
+              >
+                Add announcement
               </button>
             </div>
           </div>
@@ -902,7 +1030,13 @@ export default function MasjidConfig() {
           ) : banners.length === 0 ? (
             <div className="muted">No banners uploaded yet.</div>
           ) : (
-            <div className="banner-grid">
+            <>
+              {bannerReordering && (
+                <div className="muted" style={{ marginBottom: '10px', color: '#0066cc' }}>
+                  Updating banner order...
+                </div>
+              )}
+              <div className="banner-grid">
               {banners.map((b, index) => (
                 <div
                   key={b.filename}
@@ -924,6 +1058,7 @@ export default function MasjidConfig() {
                       onChange={(e) => updateBannerDuration(b.filename, e.target.value)}
                       className="duration-input"
                       placeholder="Duration (s)"
+                      disabled={bannerReordering}
                     />
                     <span className="duration-label">seconds</span>
                   </div>
@@ -933,14 +1068,16 @@ export default function MasjidConfig() {
                         type="button"
                         className="banner-button banner-update"
                         onClick={() => saveBannerDuration(b.filename)}
+                        disabled={bannerUpdating === b.filename || bannerReordering}
                       >
-                        Update
+                        {bannerUpdating === b.filename ? 'Updating...' : 'Update'}
                       </button>
                     )}
                     <button
                       type="button"
                       className="banner-button"
                       onClick={() => startCropExisting(b)}
+                      disabled={bannerDeleting || bannerUpdating || bannerReordering}
                     >
                       Crop
                     </button>
@@ -948,13 +1085,15 @@ export default function MasjidConfig() {
                       type="button"
                       className="banner-button banner-delete"
                       onClick={() => handleDeleteBanner(b.filename)}
+                      disabled={bannerDeleting || bannerUpdating || bannerReordering}
                     >
-                      Delete
+                      {bannerDeleting === b.filename ? 'Deleting...' : 'Delete'}
                     </button>
                   </div>
                 </div>
               ))}
             </div>
+            </>
           )}
 
           
