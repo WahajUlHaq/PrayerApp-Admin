@@ -29,6 +29,8 @@ export default function MasjidConfig() {
     method: 0,
     shafaq: 'general',
     tune: '',
+    customAngles: '',
+    monthAdjustment: '',
     school: 0,
     midnightMode: 0,
     latitudeAdjustmentMethod: 1,
@@ -105,6 +107,7 @@ export default function MasjidConfig() {
     { value: 21, label: 'Morocco' },
     { value: 22, label: 'Comunidade Islamica de Lisboa' },
     { value: 23, label: 'Ministry of Awqaf, Islamic Affairs and Holy Places, Jordan' },
+    { value: 99, label: 'Custom' },
   ]
 
   const timeZoneOptions = [
@@ -259,7 +262,10 @@ export default function MasjidConfig() {
         const payload = {
         ...formData,
         tune: typeof formData.tune === 'string' ? formData.tune.replace(/\s+/g, '') : formData.tune,
+        customAngles: typeof formData.customAngles === 'string' ? formData.customAngles.replace(/\s+/g, '') : formData.customAngles,
         address: formData.address.trim(),
+       
+        monthAdjustment: formData.monthAdjustment,
         qrLink: formData.qrLink.trim(),
         timeZone: formData.timeZone.trim(),
           tickerText,
@@ -585,8 +591,13 @@ export default function MasjidConfig() {
 
   return (
     <div className="page">
+     {/* <div className='monthBanner'>
+          Next month: Ramadan 1445 AH starts on March 11, 2024 InshaAllah
+        </div> */}
       <div className="card">
+      
         <div className="page-head">
+       
           <div>
             <h1 className="page-title">Masjid Configuration</h1>
             <p className="muted">Set the masjid details and calculation settings.</p>
@@ -893,6 +904,34 @@ export default function MasjidConfig() {
               onChange={handleInputChange}
               placeholder="e.g., 0,0,0,0,0"
               className="form-input"
+            />
+          </div>
+
+   <div className="form-group">
+            <label htmlFor="customAngles">Custom Angle (Comma-separated integers)</label>
+            <input
+              type="text"
+              id="customAngles"
+              name="customAngles"
+              value={formData.customAngles}
+              onChange={handleInputChange}
+              placeholder="fajar angle and isha angle, e.g., 18,17"
+              className="form-input"
+              disabled ={formData.method !== 99}
+            />
+          </div>
+
+           <div className="form-group">
+            <label htmlFor="customAngles">Month Days Adjustment</label>
+            <input
+              type="number"
+              id="monthAdjustment"
+              name="monthAdjustment"
+              value={formData.monthAdjustment}
+              onChange={handleInputChange}
+              placeholder="Adjust Month"
+              className="form-input"
+              disabled ={formData.calendarMethod !== "MATHEMATICAL"}
             />
           </div>
 
